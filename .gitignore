@@ -62,3 +62,6 @@ aave_dataset_balanced.csv
 *.swp
 .DS_Store
 Thumbs.db
+# Secrets
+.env
+
