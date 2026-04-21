@@ -1,0 +1,64 @@
+# =========================
+# Python & Environnement
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =========================
+# Environnements virtuels
+# =========================
+venv/
+.venv/
+env/
+.env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =========================
+# Data & Machine Learning
+# =========================
+# /!\ TRÈS IMPORTANT : On ne pousse jamais les données brutes sur Git !
+*.csv
+*.dat
+*.jsonl
+*.parquet
+*.h5
+*.pkl
+*.model
+
+# Fichiers spécifiques au projet (par sécurité)
+aave_raw_users.jsonl
+aave_liquidated_users.jsonl
+aave_dataset_advanced.csv
+aave_dataset_balanced.csv
+
+# =========================
+# IDE & OS
+# =========================
+.vscode/
+.idea/
+.cursor/
+*.swp
+.DS_Store
+Thumbs.db
