@@ -5,8 +5,8 @@ import time
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
-API_KEY = os.getenv("GRAPH_API_KEY")
+load_dotenv(override=True)
+API_KEY = (os.getenv("GRAPH_API_KEY") or "").strip().strip('"').strip("'")
 SUBGRAPH_ID = "6yuf1C49aWEscgk5n9D1DekeG1BCk5Z9imJYJT3sVmAT"
 API_URL = f"https://gateway.thegraph.com/api/{API_KEY}/subgraphs/id/{SUBGRAPH_ID}"
 OUTPUT_FILE = "aave_raw_users.jsonl"
@@ -16,6 +16,48 @@ MAX_RETRIES = 3
 SAVE_EVERY_N_ITERATIONS = 5
 SLEEP_BETWEEN_PAGES_SECONDS = 0.5
 RETRY_BACKOFF_BASE_SECONDS = 1
+
+
+def validate_graph_api_access():
+    if not API_KEY:
+        return False, "GRAPH_API_KEY is missing in .env"
+
+    if API_KEY.lower() == "your_api_key_here":
+        return False, "GRAPH_API_KEY is still a placeholder value"
+
+    # Fast preflight query to fail early with a clear auth/subgraph message.
+    probe_query = "{ _meta { block { number } } }"
+    try:
+        response = requests.post(
+            API_URL,
+            json={"query": probe_query},
+            headers={"Content-Type": "application/json"},
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as error:
+        return False, f"Gateway connectivity error: {error}"
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return False, f"Gateway returned non-JSON response (HTTP {response.status_code})"
+
+    if response.status_code != 200:
+        return False, (
+            f"Gateway HTTP error {response.status_code}: "
+            f"{str(payload)[:300]}"
+        )
+
+    errors = payload.get("errors", [])
+    if errors:
+        error_message = str(errors[0].get("message", "")).lower()
+        if "api key not found" in error_message or "auth error" in error_message:
+            return False, (
+                "Graph API key is invalid/revoked or not recognized by the gateway."
+            )
+        return False, f"GraphQL preflight error: {errors}"
+
+    return True, "Graph API preflight check passed"
 
 
 def build_query(last_id):
@@ -98,8 +140,10 @@ def fetch_page_with_retry(query):
 
 
 def fetch_all_aave_users():
-    if not API_KEY:
-        raise RuntimeError("Missing GRAPH_API_KEY in .env")
+    is_valid, validation_message = validate_graph_api_access()
+    if not is_valid:
+        raise RuntimeError(f"Preflight failed: {validation_message}")
+    print(validation_message)
 
     last_id = ""
     iteration = 0

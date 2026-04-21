@@ -16,6 +16,8 @@ TOKEN_MAP = {
 }
 COINGECKO_TIMEOUT_SECONDS = 10
 MAX_PRICE_RETRIES = 3
+STABLE_SYMBOLS = {"USDC", "USDC.e", "USDT", "DAI"}
+VOLATILE_SYMBOLS = {"WBTC", "WETH", "WMATIC", "AAVE", "LINK", "CRV", "BAL"}
 
 def fetch_live_prices():
     print("Connecting to CoinGecko API to retrieve live token prices...")
@@ -47,7 +49,11 @@ def fetch_live_prices():
 def parse_positions_in_usd(positions, live_prices):
     total_collateral_usd = 0
     total_debt_usd = 0
-    
+    collateral_by_symbol = {}
+    debt_by_symbol = {}
+    num_lend_positions = 0
+    num_borrow_positions = 0
+
     for pos in positions:
         balance = float(pos.get('balance', 0))
         token_data = pos.get('market', {}).get('inputToken', {})
@@ -60,13 +66,50 @@ def parse_positions_in_usd(positions, live_prices):
         cg_id = TOKEN_MAP.get(symbol)
         price_usd = live_prices.get(cg_id, {}).get('usd', 0)
         value_usd = adjusted_balance * price_usd
-        
+
         if side == 'LENDER':
             total_collateral_usd += value_usd
+            num_lend_positions += 1
+            collateral_by_symbol[symbol] = collateral_by_symbol.get(symbol, 0) + value_usd
         elif side == 'BORROWER':
             total_debt_usd += value_usd
-            
-    return total_collateral_usd, total_debt_usd
+            num_borrow_positions += 1
+            debt_by_symbol[symbol] = debt_by_symbol.get(symbol, 0) + value_usd
+
+    debt_stable_usd = sum(
+        value for symbol, value in debt_by_symbol.items() if symbol in STABLE_SYMBOLS
+    )
+    collateral_volatile_usd = sum(
+        value for symbol, value in collateral_by_symbol.items() if symbol in VOLATILE_SYMBOLS
+    )
+
+    debt_stable_share = debt_stable_usd / total_debt_usd if total_debt_usd > 0 else 0
+    collateral_volatile_share = (
+        collateral_volatile_usd / total_collateral_usd if total_collateral_usd > 0 else 0
+    )
+
+    debt_concentration_hhi = (
+        sum((value / total_debt_usd) ** 2 for value in debt_by_symbol.values())
+        if total_debt_usd > 0
+        else 0
+    )
+    collateral_concentration_hhi = (
+        sum((value / total_collateral_usd) ** 2 for value in collateral_by_symbol.values())
+        if total_collateral_usd > 0
+        else 0
+    )
+
+    return {
+        "total_collateral_usd": total_collateral_usd,
+        "total_debt_usd": total_debt_usd,
+        "num_lend_positions": num_lend_positions,
+        "num_borrow_positions": num_borrow_positions,
+        "num_debt_assets": len(debt_by_symbol),
+        "debt_stable_share": debt_stable_share,
+        "collateral_volatile_share": collateral_volatile_share,
+        "debt_concentration_hhi": debt_concentration_hhi,
+        "collateral_concentration_hhi": collateral_concentration_hhi,
+    }
 
 def load_advanced_features(input_path, live_prices, is_liquidated_source=False):
     print(f"Processing source file: {input_path}")
@@ -81,7 +124,9 @@ def load_advanced_features(input_path, live_prices, is_liquidated_source=False):
                         f"Skipping malformed JSON line {line_number} in {input_path}."
                     )
                     continue
-                collat_usd, debt_usd = parse_positions_in_usd(acc.get('positions', []), live_prices)
+                metrics = parse_positions_in_usd(acc.get('positions', []), live_prices)
+                collat_usd = metrics["total_collateral_usd"]
+                debt_usd = metrics["total_debt_usd"]
 
                 if collat_usd == 0 and debt_usd == 0:
                     continue
@@ -96,6 +141,13 @@ def load_advanced_features(input_path, live_prices, is_liquidated_source=False):
                     'total_debt_usd': debt_usd,
                     'ltv': ltv,
                     'num_positions': len(acc.get('positions', [])),
+                    'num_lend_positions': metrics["num_lend_positions"],
+                    'num_borrow_positions': metrics["num_borrow_positions"],
+                    'num_debt_assets': metrics["num_debt_assets"],
+                    'debt_stable_share': metrics["debt_stable_share"],
+                    'collateral_volatile_share': metrics["collateral_volatile_share"],
+                    'debt_concentration_hhi': metrics["debt_concentration_hhi"],
+                    'collateral_concentration_hhi': metrics["collateral_concentration_hhi"],
                     'is_liquidated': 1 if (is_liquidated_source or len(acc.get('liquidates', [])) > 0) else 0
                 })
     except FileNotFoundError:

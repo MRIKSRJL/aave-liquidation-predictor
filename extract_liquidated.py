@@ -5,7 +5,7 @@ import time
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 API_KEY = os.getenv("GRAPH_API_KEY")
 SUBGRAPH_ID = "6yuf1C49aWEscgk5n9D1DekeG1BCk5Z9imJYJT3sVmAT"
 API_URL = f"https://gateway.thegraph.com/api/{API_KEY}/subgraphs/id/{SUBGRAPH_ID}"
